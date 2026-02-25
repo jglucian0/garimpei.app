@@ -20,11 +20,21 @@ interface Session {
   name: string;
   status: "connected" | "qrcode" | "disconnected" | "loading";
   groups: number;
+  groupsRegistred: number;
   messagesSent: number;
   lastActivity: string;
   qrcode?: string;
 }
-
+import { Settings } from "lucide-react";
+import { GroupConfigDialog } from "@/components/GroupConfigDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 
 const MAX_SESSIONS = 2;
@@ -44,30 +54,45 @@ const statusConfig = {
 export const SessionGrid = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [reconnecting, setReconnecting] = useState<string | null>(null);
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [activeSession, setActiveSession] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [phoneInput, setPhoneInput] = useState("");
   const { toast } = useToast();
 
   const canAddSession = sessions.length < MAX_SESSIONS;
+
 
   useEffect(() => {
     const loadSessions = async () => {
       const { data } = await api.get("/session/list");
 
-      setSessions(
-        data.map((s: any) => ({
-          id: s.id,
-          name: s.id,
-          status:
-            s.status === "connected"
-              ? "connected"
-              : s.qrcode
-                ? "qrcode"
-                : "loading",
-          groups: 0,
-          messagesSent: 0,
-          lastActivity: s.status === "connected" ? "Agora" : "Aguardando scan",
-          qrcode: s.qrcode,
-        }))
+      const sessionsWithGroups = await Promise.all(
+        data.map(async (s: any) => {
+          const groupsCount = await fetchGroupsCount(s.id);
+
+          return {
+            id: s.id,
+            name: s.id,
+            status:
+              s.status === "connected"
+                ? "connected"
+                : s.qrcode
+                  ? "qrcode"
+                  : "loading",
+            groups: groupsCount,
+            groupsRegistred: 5,
+            messagesSent: 0,
+            lastActivity:
+              s.status === "connected"
+                ? "Agora"
+                : "Aguardando scan",
+            qrcode: s.qrcode,
+          };
+        })
       );
+
+      setSessions(sessionsWithGroups);
     };
 
     loadSessions();
@@ -94,21 +119,60 @@ export const SessionGrid = () => {
     setReconnecting(null);
   };
 
-  const handleAddSession = async () => {
-    if (!canAddSession) return;
+  const formatPhone = (value: string) => {
+    const numbers = value.replace(/\D/g, "").slice(0, 11);
 
-    const userId = prompt("Nome da sessão");
+    if (numbers.length <= 2)
+      return numbers;
 
-    if (!userId) return;
+    if (numbers.length <= 7)
+      return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
 
-    await api.post("/session/start", { userId });
+    return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7)}`;
+  };
+
+  const fetchGroupsCount = async (sessionId: string) => {
+    try {
+      const { data } = await api.get(`/niche-groups/${sessionId}`);
+
+      // conta apenas grupos ativos
+      const activeGroups = data.filter((g: any) => g.active);
+
+      return activeGroups.length;
+    } catch (error) {
+      console.error("Erro ao buscar grupos da sessão:", error);
+      return 0;
+    }
+  };
+
+  const isValidPhone = (value: string) => {
+    const numbers = value.replace(/\D/g, "");
+    return numbers.length === 11;
+  };
+
+  const handleCreateSession = async () => {
+    if (!isValidPhone(phoneInput)) {
+      toast({
+        variant: "destructive",
+        title: "Número inválido",
+        description: "Digite um número válido com DDD (ex: (00) 00000-0000)",
+      });
+      return;
+    }
+
+    const rawNumber = phoneInput.replace(/\D/g, "");
+
+    await api.post("/session/start", { userId: rawNumber });
 
     toast({
       title: "Sessão criada",
       description: "Aguardando QR Code...",
     });
 
-    fetchSession(userId);
+    setCreateDialogOpen(false);
+    setPhoneInput("");
+
+    fetchSession(rawNumber);
   };
 
   const fetchSession = async (userId: string) => {
@@ -117,6 +181,8 @@ export const SessionGrid = () => {
     const connected =
       data.status === "connected" ||
       data.status === "inChat";
+
+    const groupsCount = await fetchGroupsCount(userId);
 
     setSessions((prev) => {
       const exists = prev.find((s) => s.id === userId);
@@ -128,17 +194,16 @@ export const SessionGrid = () => {
             ? "qrcode"
             : "loading";
 
-      const payload: Session = {
+      const payload = {
         id: userId,
         name: userId,
         status: statusValue,
-        groups: 0,
+        groups: groupsCount,
+        groupsRegistred: 5,
         messagesSent: 0,
         lastActivity: connected
           ? "Agora"
-          : data.qrcode
-            ? "Aguardando scan"
-            : "Restaurando sessão",
+          : "Aguardando scan",
         qrcode: connected ? undefined : data.qrcode,
       };
 
@@ -175,7 +240,7 @@ export const SessionGrid = () => {
         </div>
         <Button
           size="sm"
-          onClick={handleAddSession}
+          onClick={() => setCreateDialogOpen(true)}
           disabled={!canAddSession}
           className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
         >
@@ -232,21 +297,21 @@ export const SessionGrid = () => {
                   </div>
 
                   {/* Stats */}
-                  <div className="mt-5 grid grid-cols-2 gap-3">
+                  <div className="mt-5 grid gap-3">
                     <div className="flex items-center gap-2.5 rounded-lg bg-secondary/50 px-3 py-2.5">
                       <Users className="h-4 w-4 text-muted-foreground" />
                       <div>
-                        <p className="text-xl font-bold text-foreground mono">{session.groups}</p>
-                        <p className="text-[10px] text-muted-foreground">Grupos</p>
+                        <p className="text-xl font-bold text-foreground mono">{session.groups}/{session.groupsRegistred}</p>
+                        <p className="text-[10px] text-muted-foreground">Grupos cadastrados</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2.5 rounded-lg bg-secondary/50 px-3 py-2.5">
+                    {/* <div className="flex items-center gap-2.5 rounded-lg bg-secondary/50 px-3 py-2.5">
                       <MessageSquare className="h-4 w-4 text-muted-foreground" />
                       <div>
                         <p className="text-xl font-bold text-foreground mono">{session.messagesSent}</p>
                         <p className="text-[10px] text-muted-foreground">Enviadas</p>
                       </div>
-                    </div>
+                    </div> */}
                   </div>
 
                   <p className="mt-3 text-[10px] text-muted-foreground">
@@ -290,15 +355,30 @@ export const SessionGrid = () => {
                     )}
 
                     {session.status === "connected" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 gap-2 border-success/30 text-success hover:bg-success/10 text-xs h-9 cursor-default"
-                        disabled
-                      >
-                        <Wifi className="h-3.5 w-3.5" />
-                        Sessão ativa
-                      </Button>
+                      <div className="flex gap-2 flex-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setActiveSession(session.id);
+                            setGroupDialogOpen(true);
+                          }}
+                          className="flex-1 gap-2 border-primary/30 text-primary hover:bg-primary/10 text-xs h-9"
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                          Configurar Grupos
+                        </Button>
+
+                        {/* <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 gap-2 border-success/30 text-success hover:bg-success/10 text-xs h-9 cursor-default"
+                          disabled
+                        >
+                          <Wifi className="h-3.5 w-3.5" />
+                          Sessão ativa
+                        </Button> */}
+                      </div>
                     )}
 
                     <AlertDialog>
@@ -334,11 +414,60 @@ export const SessionGrid = () => {
                     </AlertDialog>
                   </div>
                 </div>
+
               </div>
             );
           })}
+          <GroupConfigDialog
+            open={groupDialogOpen}
+            sessionId={activeSession}
+            onClose={() => {
+              setGroupDialogOpen(false);
+              setActiveSession(null);
+            }}
+          />
         </div>
       )}
+
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle>Nova Sessão WhatsApp</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Input
+              placeholder="(00) 00000-0000"
+              value={phoneInput}
+              onChange={(e) => setPhoneInput(formatPhone(e.target.value))}
+            />
+
+            <p className="text-xs text-muted-foreground">
+              Digite o número com DDD. Apenas números brasileiros (11 dígitos).
+            </p>
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreateDialogOpen(false);
+                setPhoneInput("");
+              }}
+            >
+              Cancelar
+            </Button>
+
+            <Button
+              onClick={handleCreateSession}
+              disabled={!isValidPhone(phoneInput)}
+              className="bg-primary"
+            >
+              Criar Sessão
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
