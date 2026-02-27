@@ -26,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useDragScroll } from "@/hooks/useDragScroll";
 
 export interface Offer {
   id: string;
@@ -41,10 +42,24 @@ export interface Offer {
   sessionId?: string | null;
 }
 
-const getImageUrl = (fileName?: string) => {
-  if (!fileName) return "/placeholder.png"
-  return `${api.defaults.baseURL}/uploads/offers/${fileName}`
-}
+const getImageUrl = (image?: string | null) => {
+  if (!image) return "/placeholder.png";
+
+  // Se já for URL completa, retorna direto
+  if (image.startsWith("http")) {
+    return image;
+  }
+
+  const baseURL = api.defaults.baseURL;
+
+  // Se já vier com /uploads
+  if (image.startsWith("/uploads")) {
+    return `${baseURL}${image}`;
+  }
+
+  // Se vier só o nome do arquivo
+  return `${baseURL}/uploads/offers/${image}`;
+};
 
 interface OfferTableProps {
   offers?: Offer[]
@@ -62,6 +77,7 @@ export const OfferTable = ({ offers = [], onRefresh, niche }: OfferTableProps) =
   const [isMigrating, setIsMigrating] = useState(false);
   const [internalOffers, setInternalOffers] = useState<Offer[]>(offers)
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const scrollRef = useDragScroll();
 
   const handleDelete = async (id: string) => {
     try {
@@ -290,7 +306,10 @@ export const OfferTable = ({ offers = [], onRefresh, niche }: OfferTableProps) =
       </Dialog>
 
       <div className="rounded-xl border border-border w-full min-w-0">
-        <div className="w-full overflow-x-auto no-scrollbar">
+        <div
+          ref={scrollRef}
+          className="overflow-x-auto custom-scrollbar cursor-grab active:cursor-grabbing select-none scroll-smooth"
+        >
           <table className="min-w-[950px] w-full">
             <thead>
               <tr className="border-b border-border bg-secondary/50">
