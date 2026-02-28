@@ -93,14 +93,10 @@ export function GroupConfigDialog({ open, onClose, sessionId }: Props) {
       const group = groups.find(g => g.id === id)
 
       await api.post(`/niche-groups/${sessionId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          groupId: id,
-          groupName: group?.name,
-          niche: draft[id]?.trim() || "sem nicho definido"
-        })
+        sessionId,
+        groupId: id,
+        groupName: group?.name,
+        niche: draft[id]?.trim() || "sem nicho definido"
       });
     }
 
