@@ -9,6 +9,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { api } from "@/lib/api";
 
 interface Props {
   open: boolean;
@@ -38,10 +39,13 @@ export function GroupConfigDialog({ open, onClose, sessionId }: Props) {
 
     async function load() {
       try {
-        const [sessionGroups, dbGroups] = await Promise.all([
-          fetch(`http://localhost:3001/session/groups/${sessionId}`).then(r => r.json()),
-          fetch(`http://localhost:3001/niche-groups/${sessionId}`).then(r => r.json())
+        const [sessionGroupsRes, dbGroupsRes] = await Promise.all([
+          api.get(`/session/groups/${sessionId}`),
+          api.get(`/niche-groups/${sessionId}`)
         ]);
+
+        const sessionGroups = sessionGroupsRes.data;
+        const dbGroups = dbGroupsRes.data;
 
         if (!isActive) return; // 🔥 ignora resposta antiga
 
@@ -88,7 +92,7 @@ export function GroupConfigDialog({ open, onClose, sessionId }: Props) {
     for (const id of current) {
       const group = groups.find(g => g.id === id)
 
-      await fetch(`http://localhost:3001/niche-groups/${sessionId}`, {
+      await api.post(`/niche-groups/${sessionId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -103,10 +107,8 @@ export function GroupConfigDialog({ open, onClose, sessionId }: Props) {
     for (const id of original) {
       if (!current.has(id)) {
         const old = saved.find(s => s.group_id === id);
-        await fetch(`http://localhost:3001/niche-groups/${sessionId}`, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, groupId: id })
+        await api.delete(`/niche-groups/${sessionId}`, {
+          data: { sessionId, groupId: id }
         });
       }
     }
