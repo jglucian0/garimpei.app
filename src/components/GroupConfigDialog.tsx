@@ -47,7 +47,7 @@ export function GroupConfigDialog({ open, onClose, sessionId }: Props) {
         const sessionGroups = sessionGroupsRes.data;
         const dbGroups = dbGroupsRes.data;
 
-        if (!isActive) return; // 🔥 ignora resposta antiga
+        if (!isActive) return;
 
         setGroups(sessionGroups);
         setSaved(dbGroups);
